@@ -1,4 +1,4 @@
 Flask==3.0.0
 python-telegram-bot==20.7
-gunicorn==21.2.0
-gevent==23.9.1
+uvicorn==0.24.0
+asgiref==3.7.2
