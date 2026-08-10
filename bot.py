@@ -10,7 +10,8 @@ from handlers import (
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-async def start_bot_loop():
+# Yahan hume infinite while loop hata deni hai
+async def init_and_run_bot():
     if not BOT_TOKEN:
         logger.error("BOT_TOKEN is missing!")
         return
@@ -31,11 +32,13 @@ async def start_bot_loop():
     app.add_handler(CallbackQueryHandler(button_handler))
     
     logger.info("Starting Telegram bot polling...")
+    
+    # Bot initialize karo
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
     
-    # Keep running indefinitely
-    while True:
-        import asyncio
-        await asyncio.sleep(3600)
+    logger.info("Bot successfully started and is listening for updates!")
+
+# Gunicorn jab start hoga toh ye automatically trigger hoga
+run_bot_sync()
