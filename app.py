@@ -46,7 +46,7 @@ async def start_telegram_bot():
     while True:
         await asyncio.sleep(3600)
 
-# Ye line Render pe trigger hogi jab Gunicorn start hoga
+# Render pe Gunicorn jab ye file load karega, ye line automatically bot start karegi
 threading.Thread(target=run_bot_in_thread, daemon=True).start()
 
 if __name__ == '__main__':
