@@ -8,7 +8,7 @@ from handlers import (
     daily_cmd, help_cmd, cancelgame_cmd, endgame_cmd, button_handler
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 def main():
     if not BOT_TOKEN:
@@ -24,7 +24,6 @@ def main():
     app.add_handler(CommandHandler("leaderboard", leaderboard_cmd))
     app.add_handler(CommandHandler("history", history_cmd))
     app.add_handler(CommandHandler("daily", daily_cmd))
-    app.add_handler(CommandHandler("startgame", startgame_cmd))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("cancelgame", cancelgame_cmd))
     app.add_handler(CommandHandler("endgame", endgame_cmd))
