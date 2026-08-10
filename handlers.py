@@ -1,4 +1,6 @@
 import logging
+import threading
+import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from characters import CHARACTERS, get_marvel_chars, get_dc_chars
@@ -11,6 +13,30 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 LOBBY_MESSAGES = {}
+
+# --- Lobby Timeout without JobQueue ---
+def run_lobby_timer(chat_id, game_id, context):
+    time.sleep(LOBBY_TIMEOUT_SECONDS)
+    game = db.get_game_by_id(game_id)
+    if game and game['status'] == 'lobby':
+        db.update_game_status(game_id, 'expired')
+        msg_id = LOBBY_MESSAGES.get(chat_id)
+        if msg_id:
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.ensure_future(context.bot.edit_message_text(
+                        "⌛ This battle lobby has expired.\nStart a new game with /startgame",
+                        chat_id=chat_id, message_id=msg_id
+                    ))
+                else:
+                    loop.run_until_complete(context.bot.edit_message_text(
+                        "⌛ This battle lobby has expired.\nStart a new game with /startgame",
+                        chat_id=chat_id, message_id=msg_id
+                    ))
+            except Exception as e:
+                logger.warning(f"Could not edit expired lobby message: {e}")
 
 async def startgame_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -45,25 +71,9 @@ async def startgame_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     LOBBY_MESSAGES[chat_id] = msg.message_id
     
-    context.job_queue.run_once(check_lobby_timeout, LOBBY_TIMEOUT_SECONDS, data={'chat_id': chat_id, 'game_id': game_id}, name=f"lobby_{game_id}")
-
-async def check_lobby_timeout(context: ContextTypes.DEFAULT_TYPE):
-    job_data = context.job.data
-    chat_id = job_data['chat_id']
-    game_id = job_data['game_id']
-    
-    game = db.get_game_by_id(game_id)
-    if game and game['status'] == 'lobby':
-        db.update_game_status(game_id, 'expired')
-        msg_id = LOBBY_MESSAGES.get(chat_id)
-        try:
-            if msg_id:
-                await context.bot.edit_message_text(
-                    "⌛ This battle lobby has expired.\nStart a new game with /startgame",
-                    chat_id=chat_id, message_id=msg_id
-                )
-        except Exception as e:
-            logger.warning(f"Could not edit expired lobby message: {e}")
+    # Start timeout in background thread
+    timer_thread = threading.Thread(target=run_lobby_timer, args=(chat_id, game_id, context), daemon=True)
+    timer_thread.start()
 
 def get_lobby_text(game_id):
     players = db.get_game_players(game_id)
@@ -140,7 +150,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user = query.from_user
     chat_id = query.message.chat_id
-    msg_id = query.message_id
+    # FIX: Correct way to get message_id
+    msg_id = query.message.message_id
     
     db.get_or_create_user(user.id, user.username, user.first_name)
     
@@ -359,9 +370,6 @@ async def handle_start_battle(query, context, game_id, chat_id, msg_id):
         return
         
     db.update_game_status(game_id, 'battle')
-    jobs = context.job_queue.get_jobs_by_name(f"lobby_{game_id}")
-    for job in jobs:
-        job.schedule_removal()
         
     engine = GameEngine(game_id)
     current_uid = engine.get_current_turn()
@@ -589,9 +597,6 @@ async def handle_cancel(query, context, game_id, chat_id, msg_id):
         await query.edit_message_text("❌ This action is no longer valid.")
         return
     db.update_game_status(game_id, 'cancelled')
-    jobs = context.job_queue.get_jobs_by_name(f"lobby_{game_id}")
-    for job in jobs:
-        job.schedule_removal()
     try:
         await query.edit_message_text("❌ Game cancelled.", reply_markup=InlineKeyboardMarkup([]))
     except Exception: pass
@@ -680,9 +685,6 @@ async def cancelgame_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No active game to cancel.")
         return
     db.update_game_status(game['game_id'], 'cancelled')
-    jobs = context.job_queue.get_jobs_by_name(f"lobby_{game['game_id']}")
-    for job in jobs:
-        job.schedule_removal()
     msg_id = LOBBY_MESSAGES.get(chat_id)
     if msg_id:
         try:
@@ -707,12 +709,15 @@ async def endgame_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No active game to end.")
         return
     db.update_game_status(game['game_id'], 'cancelled')
-    jobs = context.job_queue.get_jobs_by_name(f"lobby_{game['game_id']}")
-    for job in jobs:
-        job.schedule_removal()
     msg_id = LOBBY_MESSAGES.get(chat_id)
     if msg_id:
         try:
             await context.bot.edit_message_text("🛑 Game forcefully ended by admin.", chat_id=chat_id, message_id=msg_id)
         except Exception: pass
     await update.message.reply_text("🛑 Game forcefully ended.")
+
+async def dm_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != 'private':
+        return
+    text = "👋 Hey! I am the Marvel vs DC Battle Bot!\n\nI only work inside Telegram Groups. Add me to a group to start a battle!\n\nType /help in the group to see all commands."
+    await update.message.reply_text(text)
