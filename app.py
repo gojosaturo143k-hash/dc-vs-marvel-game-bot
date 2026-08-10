@@ -1,8 +1,8 @@
 import os
+import asyncio
 import logging
 from flask import Flask, jsonify
-import asyncio
-import threading
+from asgiref.wsgi import WsgiToAsgi
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -14,16 +14,6 @@ def index():
 @app.route('/health')
 def health():
     return jsonify({"status": "ok"})
-
-def run_bot_in_thread():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(start_telegram_bot())
-    except Exception as e:
-        logging.error(f"Bot thread error: {e}")
-    finally:
-        loop.close()
 
 async def start_telegram_bot():
     from config import BOT_TOKEN
@@ -43,12 +33,22 @@ async def start_telegram_bot():
     await application.updater.start_polling()
     logging.info("✅ Telegram Bot is now actively listening!")
     
+    # Bot ko zinda rakho
     while True:
         await asyncio.sleep(3600)
 
-# Render pe Gunicorn jab ye file load karega, ye line automatically bot start karegi
-threading.Thread(target=run_bot_in_thread, daemon=True).start()
+def create_app():
+    # Uvicorn ye function call karega
+    asyncio.create_task(start_telegram_bot())
+    return WsgiToAsgi(app)
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    # Sirf local testing ke liye
+    async def main():
+        task = asyncio.create_task(start_telegram_bot())
+        import uvicorn
+        config = uvicorn.Config(app="app:create_app", host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), factory=True, log_level="info")
+        server = uvicorn.Server(config)
+        await server.serve()
+        
+    asyncio.run(main())
