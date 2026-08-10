@@ -1,23 +1,18 @@
 import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
-from config import BOT_TOKEN
-from database import init_db
 from handlers import (
     startgame_cmd, profile_cmd, leaderboard_cmd, history_cmd,
     daily_cmd, help_cmd, cancelgame_cmd, endgame_cmd, button_handler
 )
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
-# Yahan hume infinite while loop hata deni hai
-async def init_and_run_bot():
-    if not BOT_TOKEN:
-        logger.error("BOT_TOKEN is missing!")
-        return
-        
-    init_db()
+def setup_bot_handlers():
+    from config import BOT_TOKEN
     
+    if not BOT_TOKEN:
+        logging.error("BOT_TOKEN missing!")
+        
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("startgame", startgame_cmd))
@@ -31,14 +26,4 @@ async def init_and_run_bot():
     
     app.add_handler(CallbackQueryHandler(button_handler))
     
-    logger.info("Starting Telegram bot polling...")
-    
-    # Bot initialize karo
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    
-    logger.info("Bot successfully started and is listening for updates!")
-
-# Gunicorn jab start hoga toh ye automatically trigger hoga
-run_bot_sync()
+    return app
