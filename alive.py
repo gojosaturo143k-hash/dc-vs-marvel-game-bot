@@ -1,5 +1,10 @@
 import os
+import logging
 from flask import Flask, jsonify
+
+# Set flask log to warning so it doesn't spam
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.WARNING)
 
 app = Flask(__name__)
 
